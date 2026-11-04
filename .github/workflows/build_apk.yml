@@ -4,14 +4,16 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   build:
+    name: Build Mutala Android APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Java 17
@@ -24,41 +26,51 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
 
-      - name: Create Android project
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Create Android platform
         run: |
-          flutter create --platforms=android \
+          flutter create \
+            --platforms=android \
             --project-name mutala \
             --org com.mutala .
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Align Java and Kotlin JVM targets
+      - name: Fix Java Kotlin JVM compatibility
         run: |
           cat >> android/build.gradle.kts <<'EOF'
 
           subprojects {
-              tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-                  compilerOptions {
-                      jvmTarget.set(
-                          org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-                      )
+              plugins.withId("org.jetbrains.kotlin.android") {
+                  tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+                      compilerOptions {
+                          jvmTarget.set(
+                              org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
+                          )
+                      }
                   }
-              }
-
-              tasks.withType<JavaCompile>().configureEach {
-                  sourceCompatibility = "17"
-                  targetCompatibility = "17"
               }
           }
           EOF
 
-      - name: Build APK
+      - name: Clean previous build
+        run: flutter clean
+
+      - name: Restore dependencies
+        run: flutter pub get
+
+      - name: Build Android Debug APK
         run: flutter build apk --debug
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Mutala-Android-APK
           path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
