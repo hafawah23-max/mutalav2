@@ -9,6 +9,7 @@ on:
 
 jobs:
   build:
+    name: Build Mutala Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -27,6 +28,9 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Show Flutter version
+        run: flutter --version
+
       - name: Create Android platform
         run: |
           flutter create \
@@ -37,14 +41,13 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Fix JVM compatibility
+      - name: Fix Java Kotlin compatibility
         run: |
           cat >> android/build.gradle.kts <<'EOF'
 
           subprojects {
               plugins.withId("org.jetbrains.kotlin.android") {
                   tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-                      val kotlinCompileTask = this
                       val javaTaskName = name.replace(
                           "Kotlin",
                           "JavaWithJavac"
@@ -66,7 +69,46 @@ jobs:
           }
           EOF
 
-      - name: Build Android APK
+      - name: Enable Core Library Desugaring
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("android/app/build.gradle.kts")
+          text = path.read_text(encoding="utf-8")
+
+          if "isCoreLibraryDesugaringEnabled" not in text:
+              text = text.replace(
+                  "compileOptions {",
+                  "compileOptions {\n"
+                  "        isCoreLibraryDesugaringEnabled = true",
+                  1
+              )
+
+          dependency = (
+              'coreLibraryDesugaring('
+              '"com.android.tools:desugar_jdk_libs:2.1.4"'
+              ')'
+          )
+
+          if "desugar_jdk_libs" not in text:
+              text += (
+                  "\n\ndependencies {\n"
+                  f"    {dependency}\n"
+                  "}\n"
+              )
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Verify Android configuration
+        run: |
+          grep -n "isCoreLibraryDesugaringEnabled" \
+            android/app/build.gradle.kts
+          grep -n "desugar_jdk_libs" \
+            android/app/build.gradle.kts
+
+      - name: Build Android Debug APK
         run: flutter build apk --debug
 
       - name: Upload APK
