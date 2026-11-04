@@ -16,7 +16,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -28,9 +28,6 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Show Flutter version
-        run: flutter --version
-
       - name: Create Android platform
         run: |
           flutter create \
@@ -41,34 +38,38 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Fix Java Kotlin JVM compatibility
+      - name: Fix Kotlin JVM targets
         run: |
           cat >> android/build.gradle.kts <<'EOF'
 
           subprojects {
               plugins.withId("org.jetbrains.kotlin.android") {
-                  tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-                      compilerOptions {
-                          jvmTarget.set(
-                              org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
-                          )
+                  afterEvaluate {
+                      tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+                          val kotlinTask = this
+                          val javaTaskName = name
+                              .replace("Kotlin", "JavaWithJavac")
+
+                          val javaTask = tasks.findByName(
+                              javaTaskName
+                          ) as? org.gradle.api.tasks.compile.JavaCompile
+
+                          if (javaTask != null) {
+                              val target = javaTask.targetCompatibility
+                              kotlinTask.compilerOptions.jvmTarget.set(
+                                  org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(target)
+                              )
+                          }
                       }
                   }
               }
           }
           EOF
 
-      - name: Clean previous build
-        run: flutter clean
-
-      - name: Restore dependencies
-        run: flutter pub get
-
-      - name: Build Android Debug APK
+      - name: Build Android APK
         run: flutter build apk --debug
 
       - name: Upload APK
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Mutala-Android-APK
