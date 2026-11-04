@@ -41,6 +41,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Install Android SDK 36
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-36"
+
       - name: Fix Java Kotlin compatibility
         run: |
           cat >> android/build.gradle.kts <<'EOF'
@@ -101,10 +106,71 @@ jobs:
           path.write_text(text, encoding="utf-8")
           PY
 
+      - name: Fix Android SDK 36 compatibility
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # Update application compileSdk
+          app = Path("android/app/build.gradle.kts")
+          text = app.read_text(encoding="utf-8")
+
+          text = re.sub(
+              r"compileSdk\s*=\s*[^\n]+",
+              "compileSdk = 36",
+              text,
+              count=1
+          )
+
+          app.write_text(text, encoding="utf-8")
+          print("Application compileSdk updated to 36")
+
+          # Update file_picker plugin compileSdk
+          cache = Path.home() / ".pub-cache"
+
+          files = list(cache.glob(
+              "hosted/pub.dev/file_picker-*/android/build.gradle"
+          ))
+
+          files += list(cache.glob(
+              "hosted/pub.dev/file_picker-*/android/build.gradle.kts"
+          ))
+
+          for path in files:
+              text = path.read_text(encoding="utf-8")
+
+              text = re.sub(
+                  r"compileSdkVersion\s+\d+",
+                  "compileSdkVersion 36",
+                  text
+              )
+
+              text = re.sub(
+                  r"compileSdk\s+\d+",
+                  "compileSdk 36",
+                  text
+              )
+
+              text = re.sub(
+                  r"compileSdk\s*=\s*\d+",
+                  "compileSdk = 36",
+                  text
+              )
+
+              path.write_text(text, encoding="utf-8")
+              print("Updated plugin:", path)
+          PY
+
       - name: Verify Android configuration
         run: |
+          echo "Checking compileSdk:"
+          grep -n "compileSdk" android/app/build.gradle.kts
+
+          echo "Checking desugaring:"
           grep -n "isCoreLibraryDesugaringEnabled" \
             android/app/build.gradle.kts
+
           grep -n "desugar_jdk_libs" \
             android/app/build.gradle.kts
 
