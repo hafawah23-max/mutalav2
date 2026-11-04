@@ -9,14 +9,13 @@ on:
 
 jobs:
   build:
-    name: Build Mutala Android APK
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -38,28 +37,29 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Fix Kotlin JVM targets
+      - name: Fix JVM compatibility
         run: |
           cat >> android/build.gradle.kts <<'EOF'
 
           subprojects {
               plugins.withId("org.jetbrains.kotlin.android") {
-                  afterEvaluate {
-                      tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-                          val kotlinTask = this
-                          val javaTaskName = name
-                              .replace("Kotlin", "JavaWithJavac")
+                  tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+                      val kotlinCompileTask = this
+                      val javaTaskName = name.replace(
+                          "Kotlin",
+                          "JavaWithJavac"
+                      )
 
-                          val javaTask = tasks.findByName(
-                              javaTaskName
-                          ) as? org.gradle.api.tasks.compile.JavaCompile
+                      val javaCompileTask = tasks.findByName(
+                          javaTaskName
+                      ) as? org.gradle.api.tasks.compile.JavaCompile
 
-                          if (javaTask != null) {
-                              val target = javaTask.targetCompatibility
-                              kotlinTask.compilerOptions.jvmTarget.set(
-                                  org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(target)
+                      if (javaCompileTask != null) {
+                          compilerOptions.jvmTarget.set(
+                              org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(
+                                  javaCompileTask.targetCompatibility
                               )
-                          }
+                          )
                       }
                   }
               }
@@ -70,6 +70,7 @@ jobs:
         run: flutter build apk --debug
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Mutala-Android-APK
